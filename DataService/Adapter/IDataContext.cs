@@ -1,9 +1,13 @@
-using AplusDbContext;
+using DataService;
 
 
 public interface IDataContext  {
 
-    Task<ListResponse>  GetListAsync(ListRequest request);
+    Task<ListResponse>  GetListAsync(GetRequest request);
 
-    Task<DataResponse> AddAsync(CreateRequest request);
+    Task<Response> AddAsync(CreateRequest request);
+
+    Task<Response> UpdateAsync(UpdateRequest request);
+
+    Task<Response> RemoveAsync(RemoveRequest request);
 }

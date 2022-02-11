@@ -1,36 +1,27 @@
 using Microsoft.AspNetCore.Mvc;
-using AplusDbContext;
+using AplusExtension;
 using MassTransit;
 namespace DataService.Controllers;
 
 [ApiController]
-[Route("[controller]")]
-public class AddContextController : ControllerBase
+[Route("[controller]/[action]")]
+public class AddController : ControllerBase
 {
     IRequestClient<AddData> _client;
 
-    private readonly ILogger<AddContextController> _logger;
+    private readonly ILogger<AddController> _logger;
     private IDataContext _db;
-    public AddContextController(ILogger<AddContextController> logger, IDataContext db,IRequestClient<AddData> client)
+    public AddController(ILogger<AddController> logger, IDataContext db,IRequestClient<AddData> client)
     {
         _client = client;
         _logger = logger;
-        _db = db;
+        _db = db; //http://localhost:5033/AddContext
     }
 
-        //http://localhost:5033/AddContext
-        public async Task<DataResponse> Add()
+       [HttpPost]
+        public async Task<DataService.Response> Add()
         {
-           
-            var request2 = new users{
-                   UID = 7,
-                   NRC = "12/pzt(N)9400449",
-                   PIN = "12120",
-                   Mobile_no = "9956000",
-                   Email= "old@gmail.com",
-                  CreatedAt = DateTime.Now,
-                   DeleteFlag = false
-               };
+         
             var data = new Dictionary<string, object>{
                         {"UID" , 4 },
                         {"NRC" , "12/pzt(N)9400" },
@@ -41,7 +32,8 @@ public class AddContextController : ControllerBase
                         {"EditedAt" , (DateTimeOffset)DateTime.Now },
                         {"DeleteFlag" , false },
                     };
-            var parameters = toParameters(data);
+           
+            var parameters = data.toParameterList();
 
             //direct test 
           /*   var result = await _db.AddAsync(new CreateRequest{
@@ -60,12 +52,7 @@ public class AddContextController : ControllerBase
         
         }
 
-        List<CustomParameter> toParameters(Dictionary<string,object> data){
-        return data.Select(x=>new CustomParameter{
-                key =  x.Key,
-                value = x.Value,
-                type = x.Value.GetType()
-            }).ToList();
+        
 }
 
-}
+

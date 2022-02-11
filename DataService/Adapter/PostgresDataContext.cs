@@ -1,19 +1,20 @@
 
 using Dapper;
 using Npgsql;
-using AplusDbContext;
+using AplusExtension;
+using DataService;
 
 public class PostgresDataContext : IDataContext
 {
-    IDbConnection _config;
+    IConfiguration _config;
     
-    public PostgresDataContext(IDbConnection cofig){
+    public PostgresDataContext(IConfiguration cofig){
         _config = cofig;
     }
 
-    public async Task<ListResponse> GetListAsync(ListRequest request)
+    public async Task<ListResponse> GetListAsync(GetRequest request)
     {
-        using (var connection = new NpgsqlConnection(_config.connection))
+        using (var connection = new NpgsqlConnection(_config["DbConnection"]))
         {
             try
             {
@@ -25,10 +26,10 @@ public class PostgresDataContext : IDataContext
                 //instead of using value directly
                 //consider using parameter to prevent SQL injection
                 //eg where name = @name and then add @name value in request parameters
-               if (request.condition.IsNotNullOrEmpty())
+               if (request.filter.IsNotNullOrEmpty())
                 {
-                    query = $"{query} where {request.condition.where}";
-                    parameters = (Object)request.condition.parameters;
+                    query = $"{query} where {request.filter.where}";
+                    parameters = request.filter.parameters.toDictionaryList();
                 }
      
                 //adding group by clause
@@ -53,9 +54,9 @@ public class PostgresDataContext : IDataContext
                 ///get total for pagination
                 long total = 0;
                 query = $"select count(*) as total_rows from  {request.tables}";
-               if (request.condition.IsNotNullOrEmpty())
+               if (request.filter.IsNotNullOrEmpty())
                 {
-                    query = $"{query} where {request.condition.where};";
+                    query = $"{query} where {request.filter.where};";
                 }
                 
                 var countvalue = await connection.QueryAsync(query, parameters);
@@ -64,7 +65,7 @@ public class PostgresDataContext : IDataContext
 
                 return new ListResponse
                 {
-                    code = ResultCode.Success,
+                    code = ResultCode.OK,
                     total = total,
                     page = request.page,
                     pageSize = request.pageSize,
@@ -75,7 +76,7 @@ public class PostgresDataContext : IDataContext
             {
                 return new ListResponse
                 {
-                    code = ResultCode.Fail,
+                    code = ResultCode.InternalServerError,
                     message = e.Message
                 };
             }
@@ -83,9 +84,9 @@ public class PostgresDataContext : IDataContext
 
     }
 
-    public async Task<DataResponse> AddAsync(CreateRequest request)
+    public async Task<Response> AddAsync(CreateRequest request)
     {
-        using (var connection = new NpgsqlConnection(_config.connection))
+        using (var connection = new NpgsqlConnection(_config["DbConnection"]))
         {
             try
             {
@@ -93,32 +94,25 @@ public class PostgresDataContext : IDataContext
                 
                 string columns = String.Join(",", request.data.Select(x=>x.key));
                 string values = String.Join(",", request.data.Select(x=>$"@{x.key}"));
-                Dictionary<string,object> parameters = request.data.ToDictionary(x=>x.key,x=>{
-                    
-                    ///this is for message queue serialization on date data problem
-                    if(x.type == typeof(DateTimeOffset)){
-                        return DateTimeOffset.Parse(x.value.ToString());
-                    }
-                    return x.value;
-                } );
+                Dictionary<string,object> parameters = request.data.toDictionaryList();
+                
+      
+                string query = $"INSERT INTO {request.table} ({columns}) VALUES ({values}) RETURNING *;";
 
-           
-                string query = $"INSERT INTO {request.table} ({columns}) VALUES ({values}) RETURNING Id;";
-
-                int Id = await connection.ExecuteScalarAsync<int>(query, parameters);
-                var created = await connection.QueryAsync($"SELECT * FROM {request.table} WHERE id = {Id};");
-                return new DataResponse
+                var created = await connection.QueryAsync(query, parameters);
+                
+                return new Response
                 {
-                    code = ResultCode.Success,
+                    code = ResultCode.OK,
                     message = "ok",
-                    data = created.FirstOrDefault()
+                    rows = created.Select(x => x as IDictionary<string,object>).ToList()
                 };
             }
             catch (Exception e)
             {
-                return new DataResponse
+                return new Response
                 {
-                    code = ResultCode.Fail,
+                    code = ResultCode.InternalServerError,
                     message = e.Message
                 };
             }
@@ -126,5 +120,73 @@ public class PostgresDataContext : IDataContext
         
     }
 
+    public async Task<Response> UpdateAsync(UpdateRequest request)
+    {
+        using (var connection = new NpgsqlConnection(_config["DbConnection"]))
+        {
+            try
+            {
+                connection.Open();
+                
+                
+                string values = String.Join(",", request.data.Select(x=>$"{x.key} = @{x.key}"));
+                Dictionary<string,object> updatedata = request.data.toDictionaryList();
+                Dictionary<string,object> wherevalues = request.filter.parameters.toDictionaryList();
 
+                var parameters = updatedata.Concat(wherevalues);
+      
+                string query = $"UPDATE {request.table} SET {values} WHERE {request.filter.where} RETURNING *;";
+
+                var updated = await connection.QueryAsync(query, parameters);
+                
+                return new Response
+                {
+                    code = ResultCode.OK,
+                    message = "ok",
+                    rows = updated.Select(x => x as IDictionary<string,object>).ToList()
+                };
+            }
+            catch (Exception e)
+            {
+                return new Response
+                {
+                    code = ResultCode.InternalServerError,
+                    message = e.Message
+                };
+            }
+        }
+        
+    }
+
+    public async Task<Response> RemoveAsync(RemoveRequest request)
+    {
+        using (var connection = new NpgsqlConnection(_config["DbConnection"]))
+        {
+            try
+            {
+                connection.Open();
+                
+                Dictionary<string,object> parameters = request.filter.parameters.toDictionaryList();
+
+                string query = $"DELETE FROM {request.table}  WHERE {request.filter.where} RETURNING *;";
+
+                var deleted = await connection.QueryAsync(query, parameters);
+                
+                return new Response
+                {
+                    code = ResultCode.OK,
+                    message = "ok",
+                    rows = deleted.Select(x => x as IDictionary<string,object>).ToList()
+                };
+            }
+            catch (Exception e)
+            {
+                return new Response
+                {
+                    code = ResultCode.InternalServerError,
+                    message = e.Message
+                };
+            }
+        }
+    }
 }

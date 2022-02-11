@@ -1,8 +1,7 @@
 namespace AplusDbContext;
-public class UpdateRequest {
+public class RemoveRequest {
 
    public string table {get;set;}
-   public List<Parameter> data{get;set;} 
    public Filter filter{get;set;}
 
 }
